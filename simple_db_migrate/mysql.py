@@ -1,6 +1,7 @@
 from core import Migration
 from core.exceptions import MigrationException
 from helpers import Utils
+import subprocess
 
 class MySQL(object):
 
@@ -13,6 +14,7 @@ class MySQL(object):
         self.__mysql_passwd = config.get("database_password")
         self.__mysql_db = config.get("database_name")
         self.__version_table = config.get("database_version_table")
+        self.__execute_inorder = config.get("execute_inorder") == "True"
 
         self.__mysql_driver = mysql_driver
         if not mysql_driver:
@@ -43,15 +45,34 @@ class MySQL(object):
         cursor._defer_warnings = True
         curr_statement = None
         try:
-            statments = MySQL._parse_sql_statements(sql)
-            if len(sql.strip(' \t\n\r')) != 0 and len(statments) == 0:
+            statements = MySQL._parse_sql_statements(sql)
+            if len(sql.strip(' \t\n\r')) != 0 and len(statements) == 0:
                 raise Exception("invalid sql syntax '%s'" % sql)
 
-            for statement in statments:
+            if not self._MySQL__execute_inorder:
+                alter_tables = [a for a in statements if len(a.split(' ')) > 2 and a.split(' ')[:2] == ['alter', 'table']]
+
+                def rfunction(dic, tup):
+                    dic[tup[0]] = dic.get(tup[0], []) + [tup[1]]
+                    return dic
+
+                table_alter = reduce(rfunction,
+                                    map(lambda a: (a.split(' ')[2], ' '.join(a.split(' ')[3:])), alter_tables), {})
+
+                for table, alters in table_alter.iteritems():
+                    subprocess.check_call('pt-online-schema-change --execute -h {} -P {} -u {} -p{} --alter \'{}\' D={},t={}'.format(self._MySQL__mysql_host, self._MySQL__mysql_port, self._MySQL__mysql_user, self._MySQL__mysql_passwd, ','.join(alters), self._MySQL__mysql_db, table), shell=True)
+
+                statements = set(statements) - set(alter_tables)
+            for statement in statements:
                 curr_statement = statement
-                affected_rows = cursor.execute(statement.encode(self.__mysql_script_encoding))
-                if execution_log:
-                    execution_log("%s\n-- %d row(s) affected\n" % (statement, affected_rows and int(affected_rows) or 0))
+                curr_split = curr_statement.split(' ')
+                if len(a.split(' ')) > 2 and curr_split[:2] == ['alter', 'table']:
+                    table = curr_split[2]
+                    subprocess.check_call('pt-online-schema-change --execute -h {} -P {} -u {} -p{} --alter \'{}\' D={},t={}'.format(self._MySQL__mysql_host, self._MySQL__mysql_port, self._MySQL__mysql_user, self._MySQL__mysql_passwd, ' '.join(curr_split[3:]), self._MySQL__mysql_db, table), shell=True)
+                else:
+                    affected_rows = cursor.execute(statement.encode(self.__mysql_script_encoding))
+                    if execution_log:
+                        execution_log("%s\n-- %d row(s) affected\n" % (statement, affected_rows and int(affected_rows) or 0))
             cursor.close()
             db.commit()
         except Exception, e:

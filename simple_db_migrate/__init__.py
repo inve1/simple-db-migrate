@@ -63,6 +63,10 @@ def run(options):
         if not config.get('database_version_table', None):
             config.update('database_version_table', "__db_version__")
 
+        config.update('execute_inorder', options.get('execute_inorder'))
+        if not config.get('execute_inorder', None):
+            config.update('execute_inorder', "True")
+
         # paused mode forces log_level to 2
         log_level = int(options.get('log_level'))
         if options.get('paused_mode'):
