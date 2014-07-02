@@ -66,7 +66,7 @@ class MySQL(object):
             for statement in statements:
                 curr_statement = statement
                 curr_split = curr_statement.split(' ')
-                if len(a.split(' ')) > 2 and curr_split[:2] == ['alter', 'table']:
+                if len(curr_split) > 2 and curr_split[:2] == ['alter', 'table']:
                     table = curr_split[2]
                     subprocess.check_call('pt-online-schema-change --execute -h {} -P {} -u {} -p{} --alter \'{}\' D={},t={}'.format(self._MySQL__mysql_host, self._MySQL__mysql_port, self._MySQL__mysql_user, self._MySQL__mysql_passwd, ' '.join(curr_split[3:]), self._MySQL__mysql_db, table), shell=True)
                 else:
